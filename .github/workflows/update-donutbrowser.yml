@@ -1,0 +1,154 @@
+name: Update Donut Browser Version
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Specific version to update to (optional, without leading v)'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+        env:
+          NIX_FIRST_BUILD_UID: 400
+
+      - name: Check for updates
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            CHECK_OUTPUT=$(./scripts/update-version.sh --check --version "${{ github.event.inputs.version }}")
+            CHECK_EXIT=$?
+          else
+            CHECK_OUTPUT=$(./scripts/update-version.sh --check)
+            CHECK_EXIT=$?
+          fi
+          set -e
+
+          if [ "$CHECK_EXIT" -ne 0 ] && [ "$CHECK_EXIT" -ne 1 ]; then
+            echo "$CHECK_OUTPUT"
+            echo "update-version.sh failed with exit code $CHECK_EXIT"
+            exit "$CHECK_EXIT"
+          fi
+
+          echo "$CHECK_OUTPUT"
+
+          CURRENT_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^current_version=//p' | tail -1)
+          LATEST_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^latest_version=//p' | tail -1)
+          CURRENT_ASSET=$(echo "$CHECK_OUTPUT" | sed -n 's/^current_asset=//p' | tail -1)
+          LATEST_ASSET=$(echo "$CHECK_OUTPUT" | sed -n 's/^latest_asset=//p' | tail -1)
+          UPDATE_NEEDED=$(echo "$CHECK_OUTPUT" | sed -n 's/^update_needed=//p' | tail -1)
+
+          if [ -z "$UPDATE_NEEDED" ]; then
+            if [ "$CHECK_EXIT" -eq 1 ]; then
+              UPDATE_NEEDED=true
+            else
+              UPDATE_NEEDED=false
+            fi
+          fi
+
+          if [ -z "$CURRENT_VERSION" ] || [ -z "$LATEST_VERSION" ]; then
+            echo "Could not parse version information from updater output"
+            exit 1
+          fi
+
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "latest_version=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "current_asset=$CURRENT_ASSET" >> "$GITHUB_OUTPUT"
+          echo "latest_asset=$LATEST_ASSET" >> "$GITHUB_OUTPUT"
+          echo "update_needed=$UPDATE_NEEDED" >> "$GITHUB_OUTPUT"
+
+      - name: Update package
+        if: steps.check.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            ./scripts/update-version.sh --version "${{ github.event.inputs.version }}"
+          else
+            ./scripts/update-version.sh
+          fi
+
+      - name: Create pull request
+        if: steps.check.outputs.update_needed == 'true'
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update donutbrowser to version ${{ steps.check.outputs.latest_version }}"
+          title: "chore: update donutbrowser to version ${{ steps.check.outputs.latest_version }}"
+          body: |
+            ## Automated Donut Browser update
+
+            This PR updates Donut Browser from `${{ steps.check.outputs.current_version }}` to `${{ steps.check.outputs.latest_version }}`.
+
+            ### Changes
+            - Updated `version` in `package.nix`
+            - Updated Linux AppImage asset name
+            - Updated AppImage SRI hash
+
+            ### Asset
+            - Previous: `${{ steps.check.outputs.current_asset }}`
+            - New: `${{ steps.check.outputs.latest_asset }}`
+
+            ### Validation
+            - `nix build .#donutbrowser` executed in update workflow
+            - Build/cache workflow will run on this PR
+
+            ---
+            This PR was created automatically by the hourly update workflow.
+          branch: update-donutbrowser-${{ steps.check.outputs.latest_version }}
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
+
+      - name: Enable auto-merge
+        if: steps.check.outputs.update_needed == 'true' && steps.create-pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge ${{ steps.create-pr.outputs.pull-request-number }} --auto --squash --delete-branch
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Update Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.check.outputs.update_needed }}" = "true" ]; then
+            echo "- Current version: ${{ steps.check.outputs.current_version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Latest version: ${{ steps.check.outputs.latest_version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- New asset: ${{ steps.check.outputs.latest_asset }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Created PR and enabled auto-merge." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No update required." >> "$GITHUB_STEP_SUMMARY"
+          fi
