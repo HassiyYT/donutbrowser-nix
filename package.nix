@@ -17,10 +17,39 @@ let
 
   appimageContents = appimageTools.extractType2 {
     inherit pname version src;
+
+    postExtract = ''
+      if [ -L "$out/Donut.desktop" ]; then
+        rm "$out/Donut.desktop"
+      fi
+      if [ ! -e "$out/Donut.desktop" ]; then
+        if [ -f "$out/usr/share/applications/Donut.desktop" ]; then
+          ln -s usr/share/applications/Donut.desktop "$out/Donut.desktop"
+        elif [ -f "$out/usr/share/applications/donutbrowser.desktop" ]; then
+          ln -s usr/share/applications/donutbrowser.desktop "$out/Donut.desktop"
+        fi
+      fi
+
+      if [ -L "$out/.DirIcon" ]; then
+        rm "$out/.DirIcon"
+      fi
+      if [ ! -e "$out/.DirIcon" ]; then
+        if [ -f "$out/Donut.png" ]; then
+          ln -s Donut.png "$out/.DirIcon"
+        elif [ -f "$out/usr/share/icons/hicolor/128x128/apps/donutbrowser.png" ]; then
+          ln -s usr/share/icons/hicolor/128x128/apps/donutbrowser.png "$out/.DirIcon"
+        fi
+      fi
+    '';
   };
 in
-appimageTools.wrapType2 {
-  inherit pname version src;
+appimageTools.wrapAppImage {
+  inherit pname version;
+  src = appimageContents;
+
+  passthru = {
+    inherit src;
+  };
 
   extraInstallCommands = ''
     if [ -f ${appimageContents}/donutbrowser.desktop ]; then
