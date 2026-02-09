@@ -12,7 +12,7 @@ let
 
   src = fetchurl {
     url = "https://github.com/zhom/donutbrowser/releases/download/v${version}/${assetName}";
-    hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    hash = "sha256-zVChQfwN16uBeBMeadX9fg03j1hAmQXv8XOLDFv3VO0=";
   };
 
   appimageContents = appimageTools.extractType2 {
