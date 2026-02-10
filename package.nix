@@ -1,6 +1,9 @@
 { lib
 , appimageTools
 , fetchurl
+, bash
+, coreutils
+, findutils
 }:
 
 let
@@ -67,6 +70,30 @@ appimageTools.wrapAppImage {
     elif [ -f ${appimageContents}/usr/share/icons/hicolor/512x512/apps/donutbrowser.png ]; then
       install -Dm444 ${appimageContents}/usr/share/icons/hicolor/512x512/apps/donutbrowser.png $out/share/icons/hicolor/512x512/apps/donutbrowser.png
     fi
+
+    # Prevent upstream cleanup bug from deleting downloaded browser binaries on startup.
+    # Keep browser root dirs writable (for new downloads) but lock version dirs.
+    mv $out/bin/donutbrowser $out/bin/.donutbrowser-wrapped
+    cat > $out/bin/donutbrowser <<'EOF'
+#!${bash}/bin/bash
+set -euo pipefail
+
+if [ "''${DONUTBROWSER_ALLOW_BINARY_CLEANUP:-0}" != "1" ]; then
+  data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
+  binaries_dir="$data_home/DonutBrowser/binaries"
+
+  if [ -d "$binaries_dir" ]; then
+    ${findutils}/bin/find "$binaries_dir" -mindepth 1 -maxdepth 1 -type d \
+      -exec ${coreutils}/bin/chmod u+w '{}' + 2>/dev/null || true
+    ${findutils}/bin/find "$binaries_dir" -mindepth 2 -maxdepth 2 -type d \
+      -exec ${coreutils}/bin/chmod u-w '{}' + 2>/dev/null || true
+  fi
+fi
+
+script_dir="$(${coreutils}/bin/dirname "$0")"
+exec "$script_dir/.donutbrowser-wrapped" "$@"
+EOF
+    ${coreutils}/bin/chmod 0755 $out/bin/donutbrowser
   '';
 
   meta = with lib; {
