@@ -27,6 +27,15 @@ Install into your profile:
 nix profile install .#donutbrowser
 ```
 
+## Runtime Binary Cleanup Workaround
+
+The wrapper script in `package.nix` protects downloaded browser binaries during
+startup to avoid an upstream cleanup bug that can remove them too early.
+
+- Default behavior: protect version directories for `8` seconds at startup
+- Override window: set `DONUTBROWSER_STARTUP_PROTECT_SECS=<seconds>`
+- Disable workaround: set `DONUTBROWSER_ALLOW_BINARY_CLEANUP=1`
+
 ## Binary Cache (Cachix)
 
 The flake config already includes:

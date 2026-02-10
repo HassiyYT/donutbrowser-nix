@@ -81,12 +81,22 @@ set -euo pipefail
 if [ "''${DONUTBROWSER_ALLOW_BINARY_CLEANUP:-0}" != "1" ]; then
   data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
   binaries_dir="$data_home/DonutBrowser/binaries"
+  protect_secs="''${DONUTBROWSER_STARTUP_PROTECT_SECS:-8}"
 
   if [ -d "$binaries_dir" ]; then
     ${findutils}/bin/find "$binaries_dir" -mindepth 1 -maxdepth 1 -type d \
       -exec ${coreutils}/bin/chmod u+w '{}' + 2>/dev/null || true
     ${findutils}/bin/find "$binaries_dir" -mindepth 2 -maxdepth 2 -type d \
       -exec ${coreutils}/bin/chmod u-w '{}' + 2>/dev/null || true
+
+    # Upstream bug runs cleanup immediately on startup.
+    # Keep versions protected only for startup window, then restore writability
+    # so normal downloads/extraction continue to work.
+    (
+      ${coreutils}/bin/sleep "$protect_secs"
+      ${findutils}/bin/find "$binaries_dir" -mindepth 2 -maxdepth 2 -type d \
+        -exec ${coreutils}/bin/chmod u+w '{}' + 2>/dev/null || true
+    ) &
   fi
 fi
 
