@@ -44,6 +44,15 @@ let
           ln -s usr/share/icons/hicolor/128x128/apps/donutbrowser.png "$out/.DirIcon"
         fi
       fi
+
+      # The extracted payload ships an older Wayland client ABI than the
+      # wrapper runtime, which crashes Firefox on touchpad scroll under Hyprland
+      # ("wl_pointer has no event 9"). Remove these stale copies so runtime
+      # resolution falls through to the newer Wayland libs from the FHS env.
+      rm -f \
+        "$out/usr/lib/libwayland-client.so.0" \
+        "$out/usr/lib/libwayland-cursor.so.0" \
+        "$out/usr/lib/libwayland-egl.so.1"
     '';
   };
 in
