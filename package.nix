@@ -4,6 +4,7 @@
 , bash
 , coreutils
 , findutils
+, wayland
 }:
 
 let
@@ -101,6 +102,15 @@ if [ "''${DONUTBROWSER_ALLOW_BINARY_CLEANUP:-0}" != "1" ]; then
 fi
 
 script_dir="$(${coreutils}/bin/dirname "$0")"
+
+# DonutBrowser's bundled AppImage ships an old libwayland-client (wl_seat v7),
+# which crashes Firefox on Hyprland touchpad scroll with:
+# "interface 'wl_pointer' has no event 9".
+# Preload Nixpkgs Wayland libs so spawned browsers use a modern protocol stack.
+if [ "''${DONUTBROWSER_DISABLE_WAYLAND_PRELOAD:-0}" != "1" ]; then
+  export LD_PRELOAD="${wayland}/lib/libwayland-client.so.0:${wayland}/lib/libwayland-cursor.so.0''${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 exec "$script_dir/.donutbrowser-wrapped" "$@"
 EOF
     ${coreutils}/bin/chmod 0755 $out/bin/donutbrowser
