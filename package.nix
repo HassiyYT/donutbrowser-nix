@@ -53,6 +53,13 @@ let
         "$out/usr/lib/libwayland-client.so.0" \
         "$out/usr/lib/libwayland-cursor.so.0" \
         "$out/usr/lib/libwayland-egl.so.1"
+
+      # Upstream AppImage hook forces GTK onto X11, which makes Donutbrowser and
+      # spawned browsers run through XWayland.
+      if [ -f "$out/apprun-hooks/linuxdeploy-plugin-gtk.sh" ]; then
+        sed -i 's|^export GDK_BACKEND=x11.*|export GDK_BACKEND="''${GDK_BACKEND:-wayland,x11}"|' \
+          "$out/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+      fi
     '';
   };
 in
@@ -87,6 +94,19 @@ appimageTools.wrapAppImage {
     cat > $out/bin/donutbrowser <<'EOF'
 #!${bash}/bin/bash
 set -euo pipefail
+
+export MOZ_ENABLE_WAYLAND="''${MOZ_ENABLE_WAYLAND:-1}"
+export GDK_BACKEND="''${GDK_BACKEND:-wayland,x11}"
+export XDG_SESSION_TYPE="''${XDG_SESSION_TYPE:-wayland}"
+
+if [ -z "''${WAYLAND_DISPLAY:-}" ] && [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
+  for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+    if [ -S "$sock" ]; then
+      export WAYLAND_DISPLAY="$(basename "$sock")"
+      break
+    fi
+  done
+fi
 
 if [ "''${DONUTBROWSER_ALLOW_BINARY_CLEANUP:-0}" != "1" ]; then
   data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
