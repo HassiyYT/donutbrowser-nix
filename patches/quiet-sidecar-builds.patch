@@ -1,0 +1,36 @@
+--- a/src-tauri/build.rs
++++ b/src-tauri/build.rs
+@@ -1,12 +1,17 @@
+ fn main() {
+   println!("cargo::rustc-check-cfg=cfg(mobile)");
++  let sidecar_only = std::env::var_os("DONUT_SIDECAR_BUILD").is_some();
+ 
+   // Ensure dist folder exists for tauri::generate_context!() macro
+   // This allows running cargo test without building the frontend first
+-  ensure_dist_folder_exists();
++  if !sidecar_only {
++    ensure_dist_folder_exists();
++  }
+ 
+   // Generate tray icon PNGs from SVG (macOS template icon format)
+-  generate_tray_icons();
++  if !sidecar_only {
++    generate_tray_icons();
++  }
+ 
+   #[cfg(target_os = "macos")]
+   {
+@@ -68,9 +73,12 @@ fn main() {
+       embed_windows_manifest();
+       println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+     }
+-  } else {
++  } else if !sidecar_only {
+     println!("cargo:warning=Skipping tauri_build: external binaries not found. This is expected when building sidecar binaries.");
+ 
++    #[cfg(target_os = "windows")]
++    embed_windows_manifest();
++  } else {
+     #[cfg(target_os = "windows")]
+     embed_windows_manifest();
+   }

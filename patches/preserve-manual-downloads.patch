@@ -1,0 +1,33 @@
+--- a/src-tauri/src/downloaded_browsers_registry.rs
++++ b/src-tauri/src/downloaded_browsers_registry.rs
+@@ -264,6 +264,16 @@
+       running_profiles.iter().cloned().collect();
+     let mut cleaned_up = Vec::new();
+ 
++    // Keep manually downloaded browser binaries when there are no profiles.
++    // Without this guard, startup cleanup can remove all downloaded browsers
++    // and force re-download after each app restart.
++    if active_set.is_empty() && running_set.is_empty() {
++      log::info!(
++        "Skipping binary cleanup: no active or running profiles"
++      );
++      return Ok(cleaned_up);
++    }
++
+     // Get pending update versions from auto updater
+     let pending_updates = match self.auto_updater.get_pending_update_versions() {
+       Ok(updates) => updates,
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -1512,6 +1512,10 @@
+       // Only runs when sync is not in progress to avoid deleting browsers
+       // that might be needed for profiles being synced from the cloud
+       tauri::async_runtime::spawn(async move {
+         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(43200)); // Every 12 hours
++        // Tokio intervals tick immediately on first call. Skip the first tick so
++        // startup does not aggressively remove browser binaries the user just
++        // downloaded but has not assigned to a profile yet.
++        interval.tick().await;
+ 
+         loop {
+           interval.tick().await;
