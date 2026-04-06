@@ -6,24 +6,21 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-  workflow_run:
-    workflows: [ "Update Donut Browser Version" ]
-    types:
-      - completed
-    branches: [ main ]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-x86_64:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Nix
         uses: cachix/install-nix-action@v31
@@ -37,7 +34,7 @@ jobs:
 
       - name: Setup Cachix
         if: github.ref == 'refs/heads/main'
-        uses: cachix/cachix-action@v15
+        uses: cachix/cachix-action@v17
         with:
           name: hassiyyt
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -55,12 +52,11 @@ jobs:
           timeout 20s xvfb-run -a ./result/bin/donutbrowser >/tmp/donutbrowser.log 2>&1 || test $? -eq 124
 
   build-aarch64:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: [ self-hosted, Linux, ARM64 ]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Nix
         uses: cachix/install-nix-action@v31
@@ -72,7 +68,7 @@ jobs:
 
       - name: Setup Cachix
         if: github.ref == 'refs/heads/main'
-        uses: cachix/cachix-action@v15
+        uses: cachix/cachix-action@v17
         with:
           name: hassiyyt
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
