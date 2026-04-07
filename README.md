@@ -14,6 +14,10 @@ Supported systems:
 - `x86_64-linux`
 - `aarch64-linux`
 
+Automated CI currently builds and caches `x86_64-linux` only. `aarch64-linux`
+remains a supported flake output, but its GitHub Actions build is manual until a
+native ARM64 runner is available.
+
 ## Quick Start
 
 Run directly:

@@ -33,4 +33,4 @@ Follow the existing automated update style:
 For manual changes, use `fix:` or `chore:` with an imperative summary. If you open a PR manually, state what changed, why, and how it was validated. The hourly updater in this repo pushes version bumps directly to `main`.
 
 ## Security & Configuration Tips
-Do not commit secrets. `CACHIX_AUTH_TOKEN` belongs in GitHub Actions secrets only. The `aarch64-linux` build job assumes a native ARM builder or self-hosted ARM64 runner is available before enabling full multi-arch cache publication.
+Do not commit secrets. `CACHIX_AUTH_TOKEN` belongs in GitHub Actions secrets only. `aarch64-linux` remains a supported package output, but ARM builds are manual-only until a native ARM builder or self-hosted ARM64 runner is available.

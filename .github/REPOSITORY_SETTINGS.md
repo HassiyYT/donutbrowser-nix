@@ -13,7 +13,7 @@ This repository uses hourly automation to keep Donut Browser up to date.
 
 ### 2) ARM Builder
 
-The `aarch64-linux` cache job assumes one of these exists:
+The manual `Build aarch64` workflow assumes one of these exists:
 
 - a self-hosted GitHub Actions runner labeled `self-hosted`, `Linux`, `ARM64`
 - a native ARM build runner you map to the same labels
@@ -26,6 +26,8 @@ The runner should be updated to at least Actions Runner `v2.327.1` so
 - `Build and Cache` now runs on `push`, `pull_request`, and manual dispatch only.
 - The hourly updater pushes directly to `main`, which is enough to trigger `Build and Cache`.
 - `main` builds are serialized and are not canceled once running.
+- `Build and Cache` is x86_64-only for automatic runs.
+- `Build aarch64` is manual-only until an ARM64 runner exists.
 
 ## Required Secrets
 

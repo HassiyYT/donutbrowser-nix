@@ -1,10 +1,6 @@
-name: Build and Cache
+name: Build aarch64
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -12,11 +8,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: false
 
 jobs:
-  build-x86_64:
-    runs-on: ubuntu-latest
+  build-aarch64:
+    runs-on: [ self-hosted, Linux, ARM64 ]
 
     steps:
       - name: Checkout repository
@@ -29,11 +25,8 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-        env:
-          NIX_FIRST_BUILD_UID: 400
 
       - name: Setup Cachix
-        if: github.ref == 'refs/heads/main'
         uses: cachix/cachix-action@v17
         with:
           name: hassiyyt
@@ -43,10 +36,4 @@ jobs:
         run: nix build .#donutbrowser --print-build-logs
 
       - name: Push to Cachix
-        if: github.ref == 'refs/heads/main'
         run: nix build .#donutbrowser --json | jq -r '.[].outputs.out' | cachix push hassiyyt
-
-      - name: Smoke test under Xvfb
-        run: |
-          test -x ./result/bin/donutbrowser
-          timeout 20s xvfb-run -a ./result/bin/donutbrowser >/tmp/donutbrowser.log 2>&1 || test $? -eq 124
