@@ -145,6 +145,11 @@ Then:
 }
 ```
 
+After activation, Linux default-browser integration depends on the desktop entry
+being visible in the user or system application directories. If the button does
+not take effect immediately, refresh or restart the desktop session before
+retrying.
+
 ## Wayland And X11
 
 The package wrapper is tuned for Wayland by default.
@@ -158,6 +163,17 @@ On startup it sets:
 
 For Wayland sessions, the default `donutbrowser` launch path is the recommended
 configuration.
+
+If you want to confirm pure Wayland behavior on compositors such as Niri, test
+with X11 explicitly removed from the launch environment:
+
+```bash
+env \
+  -u DISPLAY \
+  MOZ_ENABLE_WAYLAND=1 \
+  GDK_BACKEND=wayland \
+  donutbrowser
+```
 
 ### X11 Users
 

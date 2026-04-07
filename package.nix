@@ -298,6 +298,7 @@ stdenv.mkDerivation {
   cargoRoot = "src-tauri";
 
   patches = [
+    ./patches/default-browser-feedback.patch
     ./patches/no-network-fonts.patch
     ./patches/preserve-manual-downloads.patch
     ./patches/quiet-sidecar-builds.patch

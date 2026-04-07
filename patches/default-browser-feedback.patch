@@ -1,0 +1,39 @@
+diff --git a/src/components/settings-dialog.tsx b/src/components/settings-dialog.tsx
+index fd0d959..7953112 100644
+--- a/src/components/settings-dialog.tsx
++++ b/src/components/settings-dialog.tsx
+@@ -315,13 +315,32 @@ export function SettingsDialog({
+     setIsSettingDefault(true);
+     try {
+       await invoke("set_as_default_browser");
+-      await checkDefaultBrowserStatus();
++      const isDefault = await invoke<boolean>("is_default_browser");
++      setIsDefaultBrowser(isDefault);
++
++      if (isDefault) {
++        showSuccessToast("Donut Browser is now set as the default browser");
++      } else {
++        showErrorToast(
++          "Default browser registration did not take effect yet",
++          {
++            description:
++              "The system command completed, but the desktop session still reports another default browser. Try restarting the session or setting it manually in system settings.",
++            duration: 6000,
++          },
++        );
++      }
+     } catch (error) {
+       console.error("Failed to set as default browser:", error);
++      showErrorToast("Failed to set Donut Browser as default", {
++        description:
++          error instanceof Error ? error.message : String(error),
++        duration: 6000,
++      });
+     } finally {
+       setIsSettingDefault(false);
+     }
+-  }, [checkDefaultBrowserStatus]);
++  }, []);
+ 
+   const handleClearCache = useCallback(async () => {
+     setIsClearingCache(true);
