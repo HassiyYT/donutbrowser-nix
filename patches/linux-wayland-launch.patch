@@ -1,0 +1,22 @@
+--- a/src-tauri/src/platform_browser.rs
++++ b/src-tauri/src/platform_browser.rs
+@@ -759,11 +759,14 @@ pub mod linux {
+       }
+     }
+ 
+-    // Additional Linux-specific environment variables for better compatibility
+-    cmd.env(
+-      "DISPLAY",
+-      std::env::var("DISPLAY").unwrap_or(":0".to_string()),
+-    );
++    // Preserve DISPLAY only when the current session actually exports it.
++    // Do not invent DISPLAY=:0, because that forces X11/XWayland behavior in
++    // pure Wayland sessions such as Niri.
++    if let Ok(display) = std::env::var("DISPLAY") {
++      cmd.env("DISPLAY", display);
++    } else {
++      cmd.env_remove("DISPLAY");
++    }
+ 
+     // Set MOZ_ENABLE_WAYLAND for better Wayland support
+     if std::env::var("WAYLAND_DISPLAY").is_ok() {

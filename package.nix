@@ -301,6 +301,7 @@ stdenv.mkDerivation {
     ./patches/no-network-fonts.patch
     ./patches/preserve-manual-downloads.patch
     ./patches/quiet-sidecar-builds.patch
+    ./patches/linux-wayland-launch.patch
   ];
 
   nativeBuildInputs = [
@@ -394,6 +395,11 @@ EOF
     fi
 
     cp -a "''${debRoots[0]}"/* "$out"/
+
+    if [ -f "$out/share/applications/Donut.desktop" ]; then
+      mv "$out/share/applications/Donut.desktop" "$out/share/applications/donutbrowser.desktop"
+      ln -s donutbrowser.desktop "$out/share/applications/Donut.desktop"
+    fi
 
     runHook postInstall
   '';
