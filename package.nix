@@ -3,7 +3,9 @@
   stdenv,
   fetchFromGitHub,
   fetchurl,
+  alsa-lib,
   fetchPnpmDeps,
+  patchelf,
   pnpmConfigHook,
   pnpm,
   nodejs,
@@ -19,9 +21,39 @@
   wrapGAppsHook3,
   xdg-utils,
   xdotool,
+  nspr,
+  nss,
+  libdrm,
+  libgbm,
+  libxkbcommon,
+  libx11,
+  libxcomposite,
+  libxdamage,
+  libxext,
+  libxfixes,
+  libxrandr,
+  libxcb,
+  libxshmfence,
+  libxtst,
+  libxi,
+  libxrender,
+  libxinerama,
+  libxcursor,
+  libxscrnsaver,
+  fontconfig,
+  freetype,
+  fribidi,
+  harfbuzz,
+  expat,
+  libglvnd,
+  libgpg-error,
+  e2fsprogs,
+  gmp,
+  zlib,
   atk,
   at-spi2-atk,
   at-spi2-core,
+  cups,
   cairo,
   dbus,
   gdk-pixbuf,
@@ -29,6 +61,7 @@
   gtk3,
   libsoup_3,
   openssl,
+  systemd,
   pango,
   webkitgtk_4_1,
 }:
@@ -292,6 +325,56 @@ mod tests {
 }
 EOF
   '';
+
+  runtimeLibs = [
+    webkitgtk_4_1
+    libsoup_3
+    glib
+    gtk3
+    cairo
+    gdk-pixbuf
+    pango
+    atk
+    at-spi2-atk
+    at-spi2-core
+    dbus
+    alsa-lib
+    nss
+    nspr
+    libdrm
+    libgbm
+    libxkbcommon
+    libx11
+    libxcomposite
+    libxdamage
+    libxext
+    libxfixes
+    libxrandr
+    libxcb
+    libxshmfence
+    libxtst
+    libxi
+    xdotool
+    (lib.getLib cups)
+    libxrender
+    libxinerama
+    libxcursor
+    libxscrnsaver
+    fontconfig
+    freetype
+    fribidi
+    harfbuzz
+    expat
+    libglvnd
+    libgpg-error
+    e2fsprogs
+    gmp
+    zlib
+    (lib.getLib systemd)
+    stdenv.cc.cc.lib
+  ];
+
+  runtimeLibPath = lib.makeLibraryPath runtimeLibs;
 in
 stdenv.mkDerivation {
   inherit pname version src pnpmDeps cargoDeps;
@@ -299,10 +382,10 @@ stdenv.mkDerivation {
 
   patches = [
     ./patches/default-browser-feedback.patch
+    ./patches/wayfern-nixos-runtime.patch
     ./patches/no-network-fonts.patch
     ./patches/preserve-manual-downloads.patch
     ./patches/quiet-sidecar-builds.patch
-    ./patches/linux-wayland-launch.patch
   ];
 
   nativeBuildInputs = [
@@ -326,6 +409,7 @@ stdenv.mkDerivation {
     at-spi2-core
     cairo
     dbus
+    alsa-lib
     gdk-pixbuf
     glib
     gtk3
@@ -334,6 +418,37 @@ stdenv.mkDerivation {
     pango
     webkitgtk_4_1
     xdotool
+    (lib.getLib cups)
+    nspr
+    nss
+    libdrm
+    libgbm
+    libxkbcommon
+    libx11
+    libxcomposite
+    libxdamage
+    libxext
+    libxfixes
+    libxrandr
+    libxcb
+    libxshmfence
+    libxtst
+    libxi
+    libxrender
+    libxinerama
+    libxcursor
+    libxscrnsaver
+    fontconfig
+    freetype
+    fribidi
+    harfbuzz
+    expat
+    libglvnd
+    libgpg-error
+    e2fsprogs
+    gmp
+    zlib
+    (lib.getLib systemd)
   ];
 
   prePatch = ''
@@ -408,9 +523,13 @@ EOF
   preFixup = ''
     gappsWrapperArgs+=(
       --prefix PATH : ${lib.makeBinPath [ xdg-utils ]}
+      --set NIX_LD ${stdenv.cc.bintools.dynamicLinker}
+      --prefix NIX_LD_LIBRARY_PATH : ${runtimeLibPath}
+      --prefix LD_LIBRARY_PATH : ${runtimeLibPath}
       --set-default MOZ_ENABLE_WAYLAND 1
       --set-default GDK_BACKEND wayland,x11
       --set PLAYWRIGHT_NODEJS_PATH ${nodejs}/bin/node
+      --set DONUT_PATCHELF_BIN ${patchelf}/bin/patchelf
     )
   '';
 
