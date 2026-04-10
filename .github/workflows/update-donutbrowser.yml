@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -63,6 +63,9 @@ jobs:
           CURRENT_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^current_version=//p' | tail -1)
           LATEST_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^latest_version=//p' | tail -1)
           UPDATE_NEEDED=$(echo "$CHECK_OUTPUT" | sed -n 's/^update_needed=//p' | tail -1)
+          UPDATE_BLOCKED=$(echo "$CHECK_OUTPUT" | sed -n 's/^update_blocked=//p' | tail -1)
+          BLOCKED_REASON=$(echo "$CHECK_OUTPUT" | sed -n 's/^blocked_reason=//p' | tail -1)
+          BLOCKED_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^blocked_version=//p' | tail -1)
 
           if [ -z "$UPDATE_NEEDED" ]; then
             if [ "$CHECK_EXIT" -eq 1 ]; then
@@ -72,12 +75,24 @@ jobs:
             fi
           fi
 
+          if [ -z "$UPDATE_BLOCKED" ]; then
+            UPDATE_BLOCKED=false
+          fi
+
           echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           echo "latest_version=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
           echo "update_needed=$UPDATE_NEEDED" >> "$GITHUB_OUTPUT"
+          echo "update_blocked=$UPDATE_BLOCKED" >> "$GITHUB_OUTPUT"
+          echo "blocked_reason=$BLOCKED_REASON" >> "$GITHUB_OUTPUT"
+          echo "blocked_version=$BLOCKED_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Report blocked update
+        if: steps.check.outputs.update_blocked == 'true'
+        run: |
+          echo "Update skipped for version '${{ steps.check.outputs.blocked_version }}' because '${{ steps.check.outputs.blocked_reason }}' requires manual intervention."
 
       - name: Update package
-        if: steps.check.outputs.update_needed == 'true'
+        if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -88,7 +103,7 @@ jobs:
           fi
 
       - name: Commit and push update
-        if: steps.check.outputs.update_needed == 'true'
+        if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
         run: |
           if git diff --quiet; then
             echo "No file changes to commit."
