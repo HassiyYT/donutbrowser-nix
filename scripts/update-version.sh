@@ -23,9 +23,11 @@ ensure_in_repository_root() {
 
 ensure_required_tools_installed() {
   command -v curl >/dev/null 2>&1 || { log_error "curl is required but not installed."; exit 1; }
+  command -v git >/dev/null 2>&1 || { log_error "git is required but not installed."; exit 1; }
   command -v jq >/dev/null 2>&1 || { log_error "jq is required but not installed."; exit 1; }
   command -v nix >/dev/null 2>&1 || { log_error "nix is required but not installed."; exit 1; }
   command -v nix-prefetch-url >/dev/null 2>&1 || { log_error "nix-prefetch-url is required but not installed."; exit 1; }
+  command -v patch >/dev/null 2>&1 || { log_error "patch is required but not installed."; exit 1; }
 }
 
 print_usage() {
@@ -53,6 +55,22 @@ get_current_pnpm_hash() {
 
 get_current_cargo_hash() {
   sed -n 's/^[[:space:]]*cargoDepsHash = "\([^"]*\)";/\1/p' package.nix | head -1
+}
+
+get_packaging_patch_paths() {
+  awk '
+    /^[[:space:]]*patches = \[/ { in_patches = 1; next }
+    in_patches && /^[[:space:]]*\];/ { in_patches = 0; next }
+    in_patches {
+      line = $0
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      gsub(/,/, "", line)
+      if (line ~ /^\.\/patches\/.*\.patch$/) {
+        sub(/^\.\//, "", line)
+        print line
+      }
+    }
+  ' package.nix
 }
 
 github_api_get() {
@@ -93,6 +111,43 @@ prefetch_sri_hash() {
 
   nix_hash=$(nix-prefetch-url --type sha256 --unpack "$url" 2>/dev/null | tail -1)
   nix hash to-sri --type sha256 "$nix_hash" | tr -d '\n'
+}
+
+prepare_release_source_tree() {
+  local version="$1"
+  local dest_dir="$2"
+  local src_url="https://github.com/zhom/donutbrowser/archive/refs/tags/v${version}.tar.gz"
+
+  mkdir -p "$dest_dir"
+  curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$src_url" \
+    | tar -xzf - --strip-components=1 -C "$dest_dir"
+}
+
+check_patch_set_applicability() {
+  local version="$1"
+  local repo_root temp_dir patch_path
+  local -a failed_patches=()
+
+  repo_root=$(pwd -P)
+  temp_dir=$(mktemp -d)
+  trap 'rm -rf "$temp_dir"' RETURN
+
+  prepare_release_source_tree "$version" "$temp_dir"
+
+  while IFS= read -r patch_path; do
+    [ -n "$patch_path" ] || continue
+
+    if ! (cd "$temp_dir" && patch --dry-run -p1 --forward -i "$repo_root/$patch_path" >/dev/null); then
+      failed_patches+=("$patch_path")
+    fi
+  done < <(get_packaging_patch_paths)
+
+  if [ "${#failed_patches[@]}" -ne 0 ]; then
+    printf '%s\n' "${failed_patches[@]}"
+    return 1
+  fi
+
+  return 0
 }
 
 update_package_file() {
@@ -178,6 +233,16 @@ print_state() {
   echo "update_needed=${update_needed}"
 }
 
+print_blocked_state() {
+  local update_blocked="$1"
+  local blocked_reason="$2"
+  local blocked_version="$3"
+
+  echo "update_blocked=${update_blocked}"
+  echo "blocked_reason=${blocked_reason}"
+  echo "blocked_version=${blocked_version}"
+}
+
 main() {
   ensure_in_repository_root
   ensure_required_tools_installed
@@ -241,6 +306,22 @@ main() {
     update_needed=true
   fi
 
+  local update_blocked=false
+  local blocked_reason=""
+  local blocked_version=""
+
+  if [ "$update_needed" = true ]; then
+    local patch_check_output
+    patch_check_output=$(check_patch_set_applicability "$latest_version" 2>&1) || {
+      update_blocked=true
+      blocked_reason="patches"
+      blocked_version="$latest_version"
+      update_needed=false
+      log_warn "Skipping update to ${latest_version} because carried patches no longer apply:"
+      printf '%s\n' "$patch_check_output" | sed 's/^/  - /'
+    }
+  fi
+
   if [ "$check_only" = true ]; then
     print_state \
       "$current_version" \
@@ -252,13 +333,33 @@ main() {
       "$current_cargo_hash" \
       "$current_cargo_hash" \
       "$update_needed"
-    if [ "$update_needed" = true ]; then
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version"
+    if [ "$update_needed" = true ] && [ "$update_blocked" != true ]; then
       exit 1
     fi
     exit 0
   fi
 
+  if [ "$update_needed" != true ]; then
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$current_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$current_cargo_hash" \
+      false
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version"
+    exit 0
+  fi
+
   log_info "Updating Donut Browser to version ${latest_version}..."
+
+  local package_backup
+  package_backup=$(mktemp)
+  cp package.nix "$package_backup"
 
   update_package_file "$latest_version" "$latest_src_hash" "$FAKE_HASH" "$FAKE_HASH"
 
@@ -279,7 +380,26 @@ main() {
   update_package_file "$latest_version" "$latest_src_hash" "$latest_pnpm_hash" "$latest_cargo_hash"
 
   log_info "Verifying full package build..."
-  nix build .#donutbrowser --no-link
+  if ! nix build .#donutbrowser --no-link; then
+    log_warn "Skipping update to ${latest_version} because the full package build failed."
+    cp "$package_backup" package.nix
+    rm -f "$package_backup"
+
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$latest_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$latest_cargo_hash" \
+      false
+    print_blocked_state true "build" "$latest_version"
+    exit 0
+  fi
+
+  rm -f "$package_backup"
 
   print_state \
     "$current_version" \
@@ -291,6 +411,7 @@ main() {
     "$current_cargo_hash" \
     "$latest_cargo_hash" \
     true
+  print_blocked_state false "" ""
 }
 
 main "$@"

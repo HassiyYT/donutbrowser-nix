@@ -13,10 +13,25 @@ This repository uses hourly automation to keep Donut Browser up to date.
 
 ### 2) ARM Builder
 
-The `aarch64-linux` cache job assumes one of these exists:
+Automatic CI builds and caches only `x86_64-linux`.
+
+The `aarch64-linux` build is manual-only until one of these exists:
 
 - a self-hosted GitHub Actions runner labeled `self-hosted`, `Linux`, `ARM64`
 - a native ARM build runner you map to the same labels
+
+If you use the manual ARM workflow with `actions/checkout@v5`, keep the self-hosted
+runner updated to a recent GitHub Actions runner release that supports Node 24-era
+JavaScript actions.
+
+### 3) Updater Behavior
+
+The hourly updater can skip a new upstream Donut Browser release when the carried
+patch set no longer applies cleanly.
+
+- skipped updates are expected to stay green in Actions
+- the pinned packaged version remains unchanged until the patch set is refreshed
+- `Build and Cache` should no longer trigger from `workflow_run`
 
 ## Required Secrets
 
