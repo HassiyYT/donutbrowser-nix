@@ -1,5 +1,5 @@
 diff --git a/src/components/settings-dialog.tsx b/src/components/settings-dialog.tsx
-index fd0d959..7953112 100644
+index fd0d959ed96bf55c58adbbbd13a680e750b290e6..79531125abe8d5715d48a371d069a38c5cb4c05e 100644
 --- a/src/components/settings-dialog.tsx
 +++ b/src/components/settings-dialog.tsx
 @@ -315,13 +315,32 @@ export function SettingsDialog({

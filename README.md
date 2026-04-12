@@ -57,5 +57,11 @@ Check whether a newer release exists:
 ./scripts/update-version.sh --check
 ```
 
+Refresh carried packaging patches against a specific upstream release using your local `~/dev/donutbrowser` checkout:
+
+```bash
+./scripts/refresh-patches.sh --version 0.20.4
+```
+
 Repository automation and required GitHub settings are documented in
 [`./.github/REPOSITORY_SETTINGS.md`](./.github/REPOSITORY_SETTINGS.md).

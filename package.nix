@@ -68,10 +68,10 @@
 
 let
   pname = "donutbrowser";
-  version = "0.20.2";
-  srcHash = "sha256-QsCt3KDApFcu168vfjC5aJkClqYOzGSGzQ1/+Uz84iM=";
-  pnpmDepsHash = "sha256-PV3rsKIlRaNb53/yoZDRv6XVtlfJS5qyTyWo5fCq/lk=";
-  cargoDepsHash = "sha256-FXz6w+SaHZYMfG+iAxm+q7U6Hdrzzbugwn8mTy+Zqy0=";
+  version = "0.20.4";
+  srcHash = "sha256-vMjjDYAf8rnHdIj8NQW6NmVS+IsOCP13gSJrU8efbls=";
+  pnpmDepsHash = "sha256-NdLzvXIb2eU/SGL/mexRRVXWZ1mTlO/qvS1ccjeagXs=";
+  cargoDepsHash = "sha256-sHjzG69Mkp5fTaLMgTuxVkR8YB4YUYQ/T6AFAw/YiVU=";
 
   src = fetchFromGitHub {
     owner = "zhom";
@@ -382,7 +382,8 @@ stdenv.mkDerivation {
 
   patches = [
     ./patches/default-browser-feedback.patch
-    ./patches/wayfern-nixos-runtime.patch
+    ./patches/linux-runtime-prep.patch
+    ./patches/wayfern-launch-diagnostics.patch
     ./patches/no-network-fonts.patch
     ./patches/preserve-manual-downloads.patch
     ./patches/quiet-sidecar-builds.patch

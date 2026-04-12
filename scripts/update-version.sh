@@ -237,10 +237,14 @@ print_blocked_state() {
   local update_blocked="$1"
   local blocked_reason="$2"
   local blocked_version="$3"
+  local blocked_patches="$4"
+  local refresh_command="$5"
 
   echo "update_blocked=${update_blocked}"
   echo "blocked_reason=${blocked_reason}"
   echo "blocked_version=${blocked_version}"
+  echo "blocked_patches=${blocked_patches}"
+  echo "refresh_command=${refresh_command}"
 }
 
 main() {
@@ -309,6 +313,8 @@ main() {
   local update_blocked=false
   local blocked_reason=""
   local blocked_version=""
+  local blocked_patches=""
+  local refresh_command=""
 
   if [ "$update_needed" = true ]; then
     local patch_check_output
@@ -316,9 +322,12 @@ main() {
       update_blocked=true
       blocked_reason="patches"
       blocked_version="$latest_version"
+      blocked_patches=$(printf '%s\n' "$patch_check_output" | paste -sd ',' -)
+      refresh_command="./scripts/refresh-patches.sh --version ${latest_version}"
       update_needed=false
       log_warn "Skipping update to ${latest_version} because carried patches no longer apply:"
       printf '%s\n' "$patch_check_output" | sed 's/^/  - /'
+      log_warn "Refresh command: ${refresh_command}"
     }
   fi
 
@@ -333,7 +342,7 @@ main() {
       "$current_cargo_hash" \
       "$current_cargo_hash" \
       "$update_needed"
-    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version"
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command"
     if [ "$update_needed" = true ] && [ "$update_blocked" != true ]; then
       exit 1
     fi
@@ -351,7 +360,7 @@ main() {
       "$current_cargo_hash" \
       "$current_cargo_hash" \
       false
-    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version"
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command"
     exit 0
   fi
 
@@ -395,7 +404,7 @@ main() {
       "$current_cargo_hash" \
       "$latest_cargo_hash" \
       false
-    print_blocked_state true "build" "$latest_version"
+    print_blocked_state true "build" "$latest_version" "" ""
     exit 0
   fi
 
@@ -411,7 +420,7 @@ main() {
     "$current_cargo_hash" \
     "$latest_cargo_hash" \
     true
-  print_blocked_state false "" ""
+  print_blocked_state false "" "" "" ""
 }
 
 main "$@"
