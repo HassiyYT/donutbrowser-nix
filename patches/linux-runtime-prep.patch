@@ -1,9 +1,9 @@
 diff --git a/src-tauri/src/browser_runner.rs b/src-tauri/src/browser_runner.rs
-index d7b9855..a3aef1a 100644
+index a791f105bc9334dd503341187d9bd2264692fe12..354e5f22c9bff0c5d4cef5f05071bd4af6242da7 100644
 --- a/src-tauri/src/browser_runner.rs
 +++ b/src-tauri/src/browser_runner.rs
-@@ -690,6 +690,21 @@ impl BrowserRunner {
-
+@@ -711,6 +711,21 @@ impl BrowserRunner {
+ 
            // Launch Camoufox with -profile and -new-tab to open URL in existing instance
            // This works because we no longer use -no-remote flag
 +          #[cfg(target_os = "linux")]
@@ -25,7 +25,7 @@ index d7b9855..a3aef1a 100644
              .arg("-profile")
              .arg(&*profile_path_str)
 diff --git a/src-tauri/src/camoufox_manager.rs b/src-tauri/src/camoufox_manager.rs
-index 2d2229f..ab3786f 100644
+index 2d2229fca3a6c7b1b743d7dca08b38305edc5c06..ab3786f0b6098fbe6bb036d1cd4a30df7ab25429 100644
 --- a/src-tauri/src/camoufox_manager.rs
 +++ b/src-tauri/src/camoufox_manager.rs
 @@ -1,5 +1,7 @@
@@ -42,11 +42,11 @@ index 2d2229f..ab3786f 100644
  use tauri::AppHandle;
 -use tokio::process::Command as TokioCommand;
  use tokio::sync::Mutex as AsyncMutex;
-
+ 
  #[derive(Debug, Clone, Serialize, Deserialize)]
 @@ -263,9 +264,16 @@ impl CamoufoxManager {
      );
-
+ 
      // Spawn the browser process
 -    let mut command = TokioCommand::new(&executable_path);
 +    #[cfg(target_os = "linux")]
@@ -64,13 +64,13 @@ index 2d2229f..ab3786f 100644
        .stdout(Stdio::null())
        .stderr(Stdio::null());
 diff --git a/src-tauri/src/extraction.rs b/src-tauri/src/extraction.rs
-index 349b60d..d386369 100644
+index 349b60d11da7c5ff3f8ab007d4b423eb409ca9d5..d3863694f6ac32397c9c6eb85b30be315736b124 100644
 --- a/src-tauri/src/extraction.rs
 +++ b/src-tauri/src/extraction.rs
 @@ -221,6 +221,11 @@ impl Extractor {
              .await;
          }
-
+ 
 +        #[cfg(target_os = "linux")]
 +        {
 +          crate::platform_browser::linux::prepare_linux_browser_runtime(&path)?;
@@ -80,10 +80,10 @@ index 349b60d..d386369 100644
            "Successfully extracted {} {} to: {}",
            browser_type.as_str(),
 diff --git a/src-tauri/src/platform_browser.rs b/src-tauri/src/platform_browser.rs
-index 9814225..6d65bd6 100644
+index cd75da207e72a4b4cae3e029ae40464b96867ceb..f1ae8d0ad7cbe06702e005c5077ff5c5de14f330 100644
 --- a/src-tauri/src/platform_browser.rs
 +++ b/src-tauri/src/platform_browser.rs
-@@ -685,93 +685,367 @@ pub mod windows {
+@@ -531,93 +531,367 @@ pub mod windows {
  #[allow(dead_code)]
  pub mod linux {
    use super::*;
@@ -183,7 +183,7 @@ index 9814225..6d65bd6 100644
 +        .into(),
 +      );
 +    }
-
+ 
 -  pub async fn launch_browser_process(
 -    executable_path: &std::path::Path,
 -    args: &[String],
@@ -199,7 +199,7 @@ index 9814225..6d65bd6 100644
      );
 +    Ok(true)
 +  }
-
+ 
 -    // Check if the executable exists and is executable
 -    if !executable_path.exists() {
 -      return Err(format!("Browser executable not found: {:?}", executable_path).into());
@@ -220,7 +220,7 @@ index 9814225..6d65bd6 100644
 +        candidates.push(path);
 +      }
      }
-
+ 
 -    // Check if we can read the executable to detect architecture issues early
 -    if let Err(e) = std::fs::File::open(executable_path) {
 -      return Err(format!("Cannot access browser executable: {}", e).into());
@@ -258,7 +258,7 @@ index 9814225..6d65bd6 100644
 +        unique_paths.push(path);
 +      }
      }
-
+ 
 -    // Ensure the executable has proper permissions
 -    if let Err(e) = std::fs::metadata(executable_path) {
 -      return Err(format!("Cannot get executable metadata: {}", e).into());
@@ -274,7 +274,7 @@ index 9814225..6d65bd6 100644
 +        )?);
 +      }
      }
-
+ 
 -    // On Linux, we might need to set LD_LIBRARY_PATH for some browsers
 -    let mut cmd = Command::new(executable_path);
 -    cmd.args(args);
@@ -284,13 +284,13 @@ index 9814225..6d65bd6 100644
 +      inspected_files,
 +      patched_files
 +    );
-
+ 
 -    // For Firefox-based browsers, ensure library path includes the installation directory
 -    if let Some(install_dir) = executable_path.parent() {
 -      let mut ld_library_path = Vec::new();
 +    Ok(())
 +  }
-
+ 
 -      // Add multiple potential library directories
 -      let lib_dirs = [
 -        install_dir.join("lib"),
@@ -302,7 +302,7 @@ index 9814225..6d65bd6 100644
 +    let Some(install_dir) = executable_path.parent() else {
 +      return None;
 +    };
-
+ 
 -      for lib_dir in &lib_dirs {
 -        if lib_dir.exists() {
 -          ld_library_path.push(lib_dir.to_string_lossy().to_string());
@@ -327,7 +327,7 @@ index 9814225..6d65bd6 100644
 +        push_path(lib_dir.to_string_lossy().to_string());
        }
 +    }
-
+ 
 -      // For Firefox specifically, add common system library paths that might be needed
 -      let firefox_lib_paths = [
 -        "/usr/lib/firefox",
@@ -349,7 +349,7 @@ index 9814225..6d65bd6 100644
 +        push_path((*lib_path).to_string());
 +      }
 +    }
-
+ 
 -      for lib_path in &firefox_lib_paths {
 -        let path = std::path::Path::new(lib_path);
 -        if path.exists() {
@@ -369,10 +369,7 @@ index 9814225..6d65bd6 100644
 +
 +  fn collect_common_linux_env(library_path: Option<&str>) -> Vec<LinuxEnvAction> {
 +    let mut actions = Vec::new();
-
--      // Preserve existing LD_LIBRARY_PATH
--      if let Ok(existing_path) = std::env::var("LD_LIBRARY_PATH") {
--        ld_library_path.push(existing_path);
++
 +    if let Some(library_path) = library_path {
 +      actions.push(LinuxEnvAction::Set(
 +        "LD_LIBRARY_PATH",
@@ -380,7 +377,10 @@ index 9814225..6d65bd6 100644
 +      ));
 +      log::info!("Set LD_LIBRARY_PATH to: {library_path}");
 +    }
-+
+ 
+-      // Preserve existing LD_LIBRARY_PATH
+-      if let Ok(existing_path) = std::env::var("LD_LIBRARY_PATH") {
+-        ld_library_path.push(existing_path);
 +    for var in [
 +      "NIX_LD",
 +      "NIX_LD_LIBRARY_PATH",
@@ -410,7 +410,11 @@ index 9814225..6d65bd6 100644
 +
 +    actions
 +  }
-+
+ 
+-      // Set the combined LD_LIBRARY_PATH
+-      if !ld_library_path.is_empty() {
+-        cmd.env("LD_LIBRARY_PATH", ld_library_path.join(":"));
+-        log::info!("Set LD_LIBRARY_PATH to: {}", ld_library_path.join(":"));
 +  pub(crate) fn create_linux_command(
 +    executable_path: &Path,
 +    args: &[String],
@@ -424,11 +428,7 @@ index 9814225..6d65bd6 100644
 +
 +    let mut cmd = Command::new(executable_path);
 +    cmd.args(args);
-
--      // Set the combined LD_LIBRARY_PATH
--      if !ld_library_path.is_empty() {
--        cmd.env("LD_LIBRARY_PATH", ld_library_path.join(":"));
--        log::info!("Set LD_LIBRARY_PATH to: {}", ld_library_path.join(":"));
++
 +    let library_path = collect_linux_library_path(executable_path);
 +    for action in collect_common_linux_env(library_path.as_deref()) {
 +      match action {
@@ -440,7 +440,7 @@ index 9814225..6d65bd6 100644
 +        }
        }
      }
-
+ 
 -    // Additional Linux-specific environment variables for better compatibility
 -    cmd.env(
 -      "DISPLAY",
@@ -458,7 +458,7 @@ index 9814225..6d65bd6 100644
 +      "Launching {} directly after Linux runtime preparation",
 +      executable_path.display()
      );
-
+ 
 -    // Set MOZ_ENABLE_WAYLAND for better Wayland support
 -    if std::env::var("WAYLAND_DISPLAY").is_ok() {
 -      cmd.env("MOZ_ENABLE_WAYLAND", "1");
@@ -493,13 +493,13 @@ index 9814225..6d65bd6 100644
 +    // Check if the executable exists and is executable
 +    if !executable_path.exists() {
 +      return Err(format!("Browser executable not found: {:?}", executable_path).into());
-     }
-
++    }
++
 +    // Check if we can read the executable to detect architecture issues early
 +    if let Err(e) = std::fs::File::open(executable_path) {
 +      return Err(format!("Cannot access browser executable: {}", e).into());
-+    }
-+
+     }
+ 
 +    // Ensure the executable has proper permissions
 +    if let Err(e) = std::fs::metadata(executable_path) {
 +      return Err(format!("Cannot get executable metadata: {}", e).into());
@@ -510,9 +510,9 @@ index 9814225..6d65bd6 100644
      // Disable GPU acceleration if running in headless environments
      if std::env::var("DISPLAY").is_err() || std::env::var("WAYLAND_DISPLAY").is_err() {
        log::info!("No display detected, browser may fail to start");
-@@ -820,14 +1094,13 @@ pub mod linux {
+@@ -666,14 +940,13 @@ pub mod linux {
        .map_err(|e| format!("Failed to get executable path: {}", e))?;
-
+ 
      let profile_data_path = profile.get_profile_data_path(profiles_dir);
 -    let output = Command::new(executable_path)
 -      .args([
@@ -529,12 +529,12 @@ index 9814225..6d65bd6 100644
 +      url.to_string(),
 +    ];
 +    let output = create_linux_command(&executable_path, &args)?.output()?;
-
+ 
      if !output.status.success() {
        return Err(
-@@ -855,12 +1128,11 @@ pub mod linux {
+@@ -701,12 +974,11 @@ pub mod linux {
        .map_err(|e| format!("Failed to get executable path: {}", e))?;
-
+ 
      let profile_data_path = profile.get_profile_data_path(profiles_dir);
 -    let output = Command::new(executable_path)
 -      .args([
@@ -547,186 +547,6 @@ index 9814225..6d65bd6 100644
 +      url.to_string(),
 +    ];
 +    let output = create_linux_command(&executable_path, &args)?.output()?;
-
+ 
      if !output.status.success() {
        return Err(
-diff --git a/src-tauri/src/wayfern_manager.rs b/src-tauri/src/wayfern_manager.rs
-index 01b59a3..21a035c 100644
---- a/src-tauri/src/wayfern_manager.rs
-+++ b/src-tauri/src/wayfern_manager.rs
-@@ -1,14 +1,18 @@
- use crate::browser_runner::BrowserRunner;
-+#[cfg(target_os = "linux")]
-+use crate::platform_browser::linux::create_linux_tokio_command;
- use crate::profile::BrowserProfile;
- use reqwest::Client;
- use serde::{Deserialize, Serialize};
- use serde_json::json;
- use std::collections::HashMap;
-+use std::path::Path;
- use std::path::PathBuf;
- use std::process::Stdio;
- use std::sync::Arc;
- use std::time::Duration;
- use tauri::AppHandle;
-+use tokio::io::AsyncReadExt;
- use tokio::process::Command as TokioCommand;
- use tokio::sync::Mutex as AsyncMutex;
- use tokio_tungstenite::{connect_async, tungstenite::Message};
-@@ -131,13 +135,44 @@ impl WayfernManager {
-     fingerprint
-   }
-
--  async fn wait_for_cdp_ready(
-+  #[cfg(target_os = "linux")]
-+  fn create_browser_command(
-+    executable_path: &Path,
-+    args: &[String],
-+  ) -> Result<TokioCommand, Box<dyn std::error::Error + Send + Sync>> {
-+    create_linux_tokio_command(executable_path, args)
-+  }
-+
-+  #[cfg(not(target_os = "linux"))]
-+  fn create_browser_command(
-+    executable_path: &Path,
-+    args: &[String],
-+  ) -> Result<TokioCommand, Box<dyn std::error::Error + Send + Sync>> {
-+    let mut cmd = TokioCommand::new(executable_path);
-+    cmd.args(args);
-+    Ok(cmd)
-+  }
-+
-+  async fn read_child_stream(stream: &mut Option<tokio::process::ChildStderr>) -> String {
-+    let Some(stderr) = stream.as_mut() else {
-+      return String::new();
-+    };
-+
-+    let mut bytes = Vec::new();
-+    if stderr.read_to_end(&mut bytes).await.is_ok() {
-+      String::from_utf8_lossy(&bytes).trim().to_string()
-+    } else {
-+      String::new()
-+    }
-+  }
-+
-+  async fn wait_for_cdp_ready_with_child(
-     &self,
-     port: u16,
-+    child: &mut tokio::process::Child,
-+    executable_path: &Path,
-   ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-     let url = format!("http://127.0.0.1:{port}/json/version");
--    // On first launch, macOS Gatekeeper verifies the binary which can take 30+ seconds.
--    // Use a generous timeout (60s) to handle this.
-     let max_attempts = 120;
-     let delay = Duration::from_millis(500);
-
-@@ -148,6 +183,23 @@ impl WayfernManager {
-           return Ok(());
-         }
-         _ => {
-+          if let Some(status) = child.try_wait()? {
-+            let stderr = Self::read_child_stream(&mut child.stderr).await;
-+            let stderr = if stderr.is_empty() {
-+              "No stderr output captured".to_string()
-+            } else {
-+              stderr
-+            };
-+            return Err(
-+              format!(
-+                "Wayfern exited before CDP became ready (status: {}). Executable: {}. Stderr: {}",
-+                status,
-+                executable_path.display(),
-+                stderr
-+              )
-+              .into(),
-+            );
-+          }
-           tokio::time::sleep(delay).await;
-         }
-       }
-@@ -223,29 +275,32 @@ impl WayfernManager {
-       std::env::temp_dir().join(format!("wayfern_fingerprint_{}", uuid::Uuid::new_v4()));
-     std::fs::create_dir_all(&temp_profile_dir)?;
-
--    let mut cmd = TokioCommand::new(&executable_path);
--    cmd
--      .arg("--headless=new")
--      .arg(format!("--remote-debugging-port={port}"))
--      .arg("--remote-debugging-address=127.0.0.1")
--      .arg(format!("--user-data-dir={}", temp_profile_dir.display()))
--      .arg("--disable-gpu")
--      .arg("--no-first-run")
--      .arg("--no-default-browser-check")
--      .arg("--disable-background-mode")
--      .arg("--use-mock-keychain")
--      .arg("--password-store=basic")
--      .arg("--disable-features=DialMediaRouteProvider");
-+    let mut args = vec![
-+      "--headless=new".to_string(),
-+      format!("--remote-debugging-port={port}"),
-+      "--remote-debugging-address=127.0.0.1".to_string(),
-+      format!("--user-data-dir={}", temp_profile_dir.display()),
-+      "--disable-gpu".to_string(),
-+      "--no-first-run".to_string(),
-+      "--no-default-browser-check".to_string(),
-+      "--disable-background-mode".to_string(),
-+      "--use-mock-keychain".to_string(),
-+      "--password-store=basic".to_string(),
-+      "--disable-features=DialMediaRouteProvider".to_string(),
-+    ];
-
-     #[cfg(target_os = "linux")]
--    cmd
--      .arg("--no-sandbox")
--      .arg("--disable-setuid-sandbox")
--      .arg("--disable-dev-shm-usage");
-+    {
-+      args.push("--no-sandbox".to_string());
-+      args.push("--disable-setuid-sandbox".to_string());
-+      args.push("--disable-dev-shm-usage".to_string());
-+    }
-+
-+    let mut cmd = Self::create_browser_command(&executable_path, &args)?;
-
--    cmd.stdout(Stdio::null()).stderr(Stdio::null());
-+    cmd.stdout(Stdio::null()).stderr(Stdio::piped());
-
--    let child = cmd.spawn()?;
-+    let mut child = cmd.spawn()?;
-     let child_id = child.id();
-
-     let cleanup = || async {
-@@ -269,7 +324,10 @@ impl WayfernManager {
-       let _ = std::fs::remove_dir_all(&temp_profile_dir);
-     };
-
--    if let Err(e) = self.wait_for_cdp_ready(port).await {
-+    if let Err(e) = self
-+      .wait_for_cdp_ready_with_child(port, &mut child, &executable_path)
-+      .await
-+    {
-       cleanup().await;
-       return Err(e);
-     }
-@@ -592,15 +650,16 @@ impl WayfernManager {
-     // Don't add URL to args - we'll navigate via CDP after setting fingerprint
-     // This ensures fingerprint is applied at navigation commit time
-
--    let mut cmd = TokioCommand::new(&executable_path);
--    cmd.args(&args);
-+    let mut cmd = Self::create_browser_command(&executable_path, &args)?;
-     cmd.stdout(Stdio::piped());
-     cmd.stderr(Stdio::piped());
-
--    let child = cmd.spawn()?;
-+    let mut child = cmd.spawn()?;
-     let process_id = child.id();
-
--    self.wait_for_cdp_ready(port).await?;
-+    self
-+      .wait_for_cdp_ready_with_child(port, &mut child, &executable_path)
-+      .await?;
-
-     // Get CDP targets first - needed for both fingerprint and navigation
-     let targets = self.get_cdp_targets(port).await?;

@@ -66,6 +66,8 @@ jobs:
           UPDATE_BLOCKED=$(echo "$CHECK_OUTPUT" | sed -n 's/^update_blocked=//p' | tail -1)
           BLOCKED_REASON=$(echo "$CHECK_OUTPUT" | sed -n 's/^blocked_reason=//p' | tail -1)
           BLOCKED_VERSION=$(echo "$CHECK_OUTPUT" | sed -n 's/^blocked_version=//p' | tail -1)
+          BLOCKED_PATCHES=$(echo "$CHECK_OUTPUT" | sed -n 's/^blocked_patches=//p' | tail -1)
+          REFRESH_COMMAND=$(echo "$CHECK_OUTPUT" | sed -n 's/^refresh_command=//p' | tail -1)
 
           if [ -z "$UPDATE_NEEDED" ]; then
             if [ "$CHECK_EXIT" -eq 1 ]; then
@@ -85,11 +87,19 @@ jobs:
           echo "update_blocked=$UPDATE_BLOCKED" >> "$GITHUB_OUTPUT"
           echo "blocked_reason=$BLOCKED_REASON" >> "$GITHUB_OUTPUT"
           echo "blocked_version=$BLOCKED_VERSION" >> "$GITHUB_OUTPUT"
+          echo "blocked_patches=$BLOCKED_PATCHES" >> "$GITHUB_OUTPUT"
+          echo "refresh_command=$REFRESH_COMMAND" >> "$GITHUB_OUTPUT"
 
       - name: Report blocked update
         if: steps.check.outputs.update_blocked == 'true'
         run: |
           echo "Update skipped for version '${{ steps.check.outputs.blocked_version }}' because '${{ steps.check.outputs.blocked_reason }}' requires manual intervention."
+          if [ -n "${{ steps.check.outputs.blocked_patches }}" ]; then
+            echo "Blocking patches: ${{ steps.check.outputs.blocked_patches }}"
+          fi
+          if [ -n "${{ steps.check.outputs.refresh_command }}" ]; then
+            echo "Refresh command: ${{ steps.check.outputs.refresh_command }}"
+          fi
 
       - name: Update package
         if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
