@@ -9,33 +9,235 @@ This flake exposes:
 - `checks.<system>.default`
 - `overlays.default`
 
-Supported systems:
+## Requirements
 
-- `x86_64-linux`
-- `aarch64-linux`
+- Linux with flakes enabled
+- Supported systems:
+  - `x86_64-linux`
+  - `aarch64-linux`
 
-## Quick Start
+## Try Without Installing
 
-Run directly:
+Run directly from GitHub:
 
 ```bash
 nix run github:HassiyYT/donutbrowser-nix#donutbrowser
 ```
 
-Install into the current profile:
+Run from a local checkout:
+
+```bash
+nix run .#donutbrowser
+```
+
+## Install For One User
+
+Install into your current user profile from GitHub:
 
 ```bash
 nix profile install github:HassiyYT/donutbrowser-nix#donutbrowser
 ```
 
-Managed browser binaries such as Wayfern and Camoufox are launched on NixOS through the package-provided runtime loader setup, so a separate system `programs.nix-ld` configuration is not required.
+Install from a local checkout:
 
-## Cachix
+```bash
+nix profile install .#donutbrowser
+```
 
-The flake declares the `hassiyyt` Cachix cache:
+The installed executable is:
+
+```bash
+donutbrowser
+```
+
+## Install System-Wide On NixOS
+
+Add the flake as an input in your `flake.nix`:
+
+```nix
+{
+  inputs.donutbrowser.url = "github:HassiyYT/donutbrowser-nix";
+}
+```
+
+Then install it system-wide:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  environment.systemPackages = [
+    inputs.donutbrowser.packages.${pkgs.system}.donutbrowser
+  ];
+}
+```
+
+### Optional Overlay Style
+
+If you prefer using `pkgs.donutbrowser`:
+
+```nix
+{ inputs, ... }:
+{
+  nixpkgs.overlays = [ inputs.donutbrowser.overlays.default ];
+}
+```
+
+Then:
+
+```nix
+{ pkgs, ... }:
+{
+  environment.systemPackages = [ pkgs.donutbrowser ];
+}
+```
+
+## Install With Home Manager
+
+Add the same flake input:
+
+```nix
+{
+  inputs.donutbrowser.url = "github:HassiyYT/donutbrowser-nix";
+}
+```
+
+Then add the package to `home.packages`:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  home.packages = [
+    inputs.donutbrowser.packages.${pkgs.system}.donutbrowser
+  ];
+}
+```
+
+### Optional Overlay Style
+
+If you already use overlays in Home Manager:
+
+```nix
+{ inputs, ... }:
+{
+  nixpkgs.overlays = [ inputs.donutbrowser.overlays.default ];
+}
+```
+
+Then:
+
+```nix
+{ pkgs, ... }:
+{
+  home.packages = [ pkgs.donutbrowser ];
+}
+```
+
+## Flake Usage In Another `flake.nix`
+
+You can reference this flake from another flake in any of these ways:
+
+From GitHub:
+
+```nix
+inputs.donutbrowser.url = "github:HassiyYT/donutbrowser-nix";
+```
+
+From a local checkout:
+
+```nix
+inputs.donutbrowser.url = "path:/home/h/dev/donutbrowser-nix";
+```
+
+Or from the current directory while working inside the repo:
+
+```bash
+nix build .#donutbrowser
+nix run .#donutbrowser
+nix flake check
+```
+
+## Using Cachix
+
+### With Cachix Automatically
+
+This flake already declares:
 
 - `https://hassiyyt.cachix.org`
 - `hassiyyt.cachix.org-1:GPb2J+eS5AyHtVF9zQ+cchuQJl65WrxpcrdYsSiDjno=`
+
+If your Nix setup accepts flake-provided cache settings, `nix run`, `nix build`, `nix profile install`, NixOS, and Home Manager can use the cache automatically.
+
+### Without Cachix Or Without Trusting Flake Config
+
+The flake still works without Cachix, but builds will be slower because more work happens locally.
+
+If you want to trust the cache globally instead of relying on flake config, add this to your Nix settings:
+
+```nix
+{
+  nix.settings = {
+    extra-substituters = [ "https://hassiyyt.cachix.org" ];
+    extra-trusted-public-keys = [
+      "hassiyyt.cachix.org-1:GPb2J+eS5AyHtVF9zQ+cchuQJl65WrxpcrdYsSiDjno="
+    ];
+  };
+}
+```
+
+## Wayland And Xorg
+
+The package wrapper is tuned for Linux desktop use and sets:
+
+- `NIX_LD`
+- `NIX_LD_LIBRARY_PATH`
+- `LD_LIBRARY_PATH`
+- `PLAYWRIGHT_NODEJS_PATH`
+- `DONUT_PATCHELF_BIN`
+- `MOZ_ENABLE_WAYLAND=1` by default
+- `GDK_BACKEND=wayland,x11` by default
+
+Managed browser binaries such as Wayfern and Camoufox are launched on NixOS through the package-provided runtime setup, so a separate system `programs.nix-ld` configuration is not required.
+
+### Wayland
+
+For Wayland sessions, the default launch path is recommended:
+
+```bash
+donutbrowser
+```
+
+If you want to force a pure Wayland launch check:
+
+```bash
+env -u DISPLAY GDK_BACKEND=wayland donutbrowser
+```
+
+### Xorg / X11
+
+Xorg is supported too. In many X11 sessions, the default launch path already works:
+
+```bash
+donutbrowser
+```
+
+If you want to force X11 explicitly:
+
+```bash
+env GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0 donutbrowser
+```
+
+## Flake Outputs
+
+This repository exports:
+
+- `packages.<system>.default`
+- `packages.<system>.donutbrowser`
+- `packages.<system>.pnpm-deps`
+- `packages.<system>.cargo-deps`
+- `apps.<system>.default`
+- `apps.<system>.donutbrowser`
+- `checks.<system>.default`
+- `overlays.default`
 
 ## Development
 
@@ -43,6 +245,18 @@ Build exactly what CI builds:
 
 ```bash
 nix build .#donutbrowser --print-build-logs
+```
+
+Run the packaged app locally:
+
+```bash
+nix run .#donutbrowser
+```
+
+Check the flake for the current system:
+
+```bash
+nix flake check
 ```
 
 Update to the latest upstream Donut Browser release:
@@ -63,5 +277,4 @@ Refresh carried packaging patches against a specific upstream release using your
 ./scripts/refresh-patches.sh --version 0.20.4
 ```
 
-Repository automation and required GitHub settings are documented in
-[`./.github/REPOSITORY_SETTINGS.md`](./.github/REPOSITORY_SETTINGS.md).
+Repository automation and required GitHub settings are documented in [`./.github/REPOSITORY_SETTINGS.md`](./.github/REPOSITORY_SETTINGS.md).
