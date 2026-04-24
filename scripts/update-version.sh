@@ -26,7 +26,6 @@ ensure_required_tools_installed() {
   command -v git >/dev/null 2>&1 || { log_error "git is required but not installed."; exit 1; }
   command -v jq >/dev/null 2>&1 || { log_error "jq is required but not installed."; exit 1; }
   command -v nix >/dev/null 2>&1 || { log_error "nix is required but not installed."; exit 1; }
-  command -v nix-prefetch-url >/dev/null 2>&1 || { log_error "nix-prefetch-url is required but not installed."; exit 1; }
   command -v patch >/dev/null 2>&1 || { log_error "patch is required but not installed."; exit 1; }
 }
 
@@ -107,10 +106,19 @@ extract_version_from_release_json() {
 
 prefetch_sri_hash() {
   local url="$1"
-  local nix_hash
+  local hash
 
-  nix_hash=$(nix-prefetch-url --type sha256 --unpack "$url" 2>/dev/null | tail -1)
-  nix hash to-sri --type sha256 "$nix_hash" | tr -d '\n'
+  hash=$(
+    nix store prefetch-file --json --hash-type sha256 --unpack "$url" \
+      | jq -r '.hash // empty'
+  )
+
+  if [ -z "$hash" ] || [ "$hash" = "null" ]; then
+    log_error "Could not prefetch source hash for $url"
+    return 1
+  fi
+
+  printf '%s\n' "$hash"
 }
 
 prepare_release_source_tree() {

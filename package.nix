@@ -68,10 +68,10 @@
 
 let
   pname = "donutbrowser";
-  version = "0.20.4";
-  srcHash = "sha256-vMjjDYAf8rnHdIj8NQW6NmVS+IsOCP13gSJrU8efbls=";
+  version = "0.21.2";
+  srcHash = "sha256-vq69qS7P7Rf4rejHpPdVqlDTZ4DZwkLPcDR1ZuhmoLo=";
   pnpmDepsHash = "sha256-NdLzvXIb2eU/SGL/mexRRVXWZ1mTlO/qvS1ccjeagXs=";
-  cargoDepsHash = "sha256-sHjzG69Mkp5fTaLMgTuxVkR8YB4YUYQ/T6AFAw/YiVU=";
+  cargoDepsHash = "sha256-JEREr7UzCz0KKDz/zblKybveR6dFK483iVXi8lS5ZQM=";
 
   src = fetchFromGitHub {
     owner = "zhom";
@@ -383,7 +383,6 @@ stdenv.mkDerivation {
   patches = [
     ./patches/default-browser-feedback.patch
     ./patches/linux-runtime-prep.patch
-    ./patches/wayfern-launch-diagnostics.patch
     ./patches/no-network-fonts.patch
     ./patches/preserve-manual-downloads.patch
     ./patches/quiet-sidecar-builds.patch
