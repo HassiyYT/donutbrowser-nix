@@ -9,10 +9,28 @@ readonly NC='\033[0m'
 readonly GITHUB_REPO="zhom/donutbrowser"
 readonly GITHUB_API_BASE="https://api.github.com/repos/${GITHUB_REPO}/releases"
 readonly FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+readonly PLAYWRIGHT_DRIVER_BASE_URL="https://playwright.azureedge.net/builds/driver"
+
+PACKAGE_BACKUP=""
+RESTORE_PACKAGE_ON_EXIT=false
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+restore_package_backup() {
+  if [ "$RESTORE_PACKAGE_ON_EXIT" = true ] && [ -n "$PACKAGE_BACKUP" ] && [ -f "$PACKAGE_BACKUP" ]; then
+    cp "$PACKAGE_BACKUP" package.nix
+  fi
+  if [ -n "$PACKAGE_BACKUP" ] && [ -f "$PACKAGE_BACKUP" ]; then
+    rm -f "$PACKAGE_BACKUP"
+  fi
+  RESTORE_PACKAGE_ON_EXIT=false
+}
+
+restore_package_backup_on_exit() {
+  restore_package_backup
+}
 
 ensure_in_repository_root() {
   if [ ! -f "flake.nix" ] || [ ! -f "package.nix" ]; then
@@ -54,6 +72,14 @@ get_current_pnpm_hash() {
 
 get_current_cargo_hash() {
   sed -n 's/^[[:space:]]*cargoDepsHash = "\([^"]*\)";/\1/p' package.nix | head -1
+}
+
+get_current_playwright_driver_version() {
+  sed -n 's/^[[:space:]]*playwrightDriverVersion = "\([^"]*\)";/\1/p' package.nix | head -1
+}
+
+get_current_playwright_driver_hash() {
+  sed -n 's/^[[:space:]]*playwrightDriverHash = "\([^"]*\)";/\1/p' package.nix | head -1
 }
 
 get_packaging_patch_paths() {
@@ -121,6 +147,23 @@ prefetch_sri_hash() {
   printf '%s\n' "$hash"
 }
 
+prefetch_file_sri_hash() {
+  local url="$1"
+  local hash
+
+  hash=$(
+    nix store prefetch-file --json --hash-type sha256 "$url" \
+      | jq -r '.hash // empty'
+  )
+
+  if [ -z "$hash" ] || [ "$hash" = "null" ]; then
+    log_error "Could not prefetch file hash for $url"
+    return 1
+  fi
+
+  printf '%s\n' "$hash"
+}
+
 prepare_release_source_tree() {
   local version="$1"
   local dest_dir="$2"
@@ -138,9 +181,11 @@ check_patch_set_applicability() {
 
   repo_root=$(pwd -P)
   temp_dir=$(mktemp -d)
-  trap 'rm -rf "$temp_dir"' RETURN
 
-  prepare_release_source_tree "$version" "$temp_dir"
+  if ! prepare_release_source_tree "$version" "$temp_dir"; then
+    rm -rf "$temp_dir"
+    return 1
+  fi
 
   while IFS= read -r patch_path; do
     [ -n "$patch_path" ] || continue
@@ -152,10 +197,127 @@ check_patch_set_applicability() {
 
   if [ "${#failed_patches[@]}" -ne 0 ]; then
     printf '%s\n' "${failed_patches[@]}"
+    rm -rf "$temp_dir"
     return 1
   fi
 
+  rm -rf "$temp_dir"
   return 0
+}
+
+get_playwright_source_from_cargo_lock() {
+  local source_dir="$1"
+  local cargo_lock="${source_dir}/src-tauri/Cargo.lock"
+
+  if [ ! -f "$cargo_lock" ]; then
+    log_error "src-tauri/Cargo.lock not found in release source"
+    return 1
+  fi
+
+  awk '
+    /^\[\[package\]\]/ { in_package = 0; next }
+    $0 == "name = \"playwright\"" { in_package = 1; next }
+    in_package && /^source = / {
+      line = $0
+      sub(/^source = "/, "", line)
+      sub(/"$/, "", line)
+      print line
+      exit
+    }
+  ' "$cargo_lock"
+}
+
+playwright_source_to_build_rs_url() {
+  local source="$1"
+  local repo_url commit repo_path
+
+  if [[ "$source" != git+https://github.com/*#* ]]; then
+    log_error "Unsupported playwright source URL: ${source}"
+    return 1
+  fi
+
+  commit="${source##*#}"
+  repo_url="${source#git+}"
+  repo_url="${repo_url%%\?*}"
+  repo_url="${repo_url%%#*}"
+  repo_path="${repo_url#https://github.com/}"
+  repo_path="${repo_path%.git}"
+
+  if [ -z "$commit" ] || [ -z "$repo_path" ]; then
+    log_error "Could not parse playwright source URL: ${source}"
+    return 1
+  fi
+
+  printf 'https://raw.githubusercontent.com/%s/%s/src/build.rs\n' "$repo_path" "$commit"
+}
+
+extract_playwright_driver_version() {
+  local build_rs_url="$1"
+  local build_rs driver_version
+
+  build_rs=$(
+    curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$build_rs_url"
+  )
+  driver_version=$(
+    printf '%s\n' "$build_rs" \
+      | sed -n 's/^[[:space:]]*\(pub[[:space:]]\+\)\{0,1\}const DRIVER_VERSION:[^=]*=[[:space:]]*"\([^"]*\)";.*/\2/p' \
+      | head -1
+  )
+
+  if [ -z "$driver_version" ]; then
+    log_error "Could not find DRIVER_VERSION in $build_rs_url"
+    return 1
+  fi
+
+  printf '%s\n' "$driver_version"
+}
+
+get_playwright_driver_url() {
+  local driver_version="$1"
+  local release_segment=""
+
+  if [[ "$driver_version" == *next* ]] || [[ "$driver_version" == *alpha* ]] || [[ "$driver_version" == *beta* ]]; then
+    release_segment="/next"
+  fi
+
+  printf '%s%s/playwright-%s-linux.zip\n' "$PLAYWRIGHT_DRIVER_BASE_URL" "$release_segment" "$driver_version"
+}
+
+resolve_playwright_driver_metadata() {
+  local version="$1"
+  local temp_dir source build_rs_url driver_version driver_url driver_hash
+
+  temp_dir=$(mktemp -d)
+  if ! prepare_release_source_tree "$version" "$temp_dir"; then
+    rm -rf "$temp_dir"
+    return 1
+  fi
+
+  source=$(get_playwright_source_from_cargo_lock "$temp_dir")
+  if [ -z "$source" ]; then
+    log_error "Could not find playwright dependency source in Cargo.lock"
+    rm -rf "$temp_dir"
+    return 1
+  fi
+
+  if ! build_rs_url=$(playwright_source_to_build_rs_url "$source"); then
+    rm -rf "$temp_dir"
+    return 1
+  fi
+
+  if ! driver_version=$(extract_playwright_driver_version "$build_rs_url"); then
+    rm -rf "$temp_dir"
+    return 1
+  fi
+
+  driver_url=$(get_playwright_driver_url "$driver_version")
+  if ! driver_hash=$(prefetch_file_sri_hash "$driver_url"); then
+    rm -rf "$temp_dir"
+    return 1
+  fi
+
+  rm -rf "$temp_dir"
+  printf '%s\n%s\n' "$driver_version" "$driver_hash"
 }
 
 update_package_file() {
@@ -163,15 +325,19 @@ update_package_file() {
   local new_src_hash="$2"
   local new_pnpm_hash="$3"
   local new_cargo_hash="$4"
+  local new_playwright_driver_version="$5"
+  local new_playwright_driver_hash="$6"
   local tmp_file
 
   tmp_file=$(mktemp)
 
-  awk \
+  if ! awk \
     -v new_version="$new_version" \
     -v new_src_hash="$new_src_hash" \
     -v new_pnpm_hash="$new_pnpm_hash" \
-    -v new_cargo_hash="$new_cargo_hash" '
+    -v new_cargo_hash="$new_cargo_hash" \
+    -v new_playwright_driver_version="$new_playwright_driver_version" \
+    -v new_playwright_driver_hash="$new_playwright_driver_hash" '
       !version_updated && $0 ~ /^[[:space:]]*version = "/ {
         sub(/"[^"]+"/, "\"" new_version "\"")
         version_updated = 1
@@ -188,8 +354,24 @@ update_package_file() {
         sub(/"[^"]+"/, "\"" new_cargo_hash "\"")
         cargo_hash_updated = 1
       }
+      !playwright_driver_version_updated && $0 ~ /^[[:space:]]*playwrightDriverVersion = "/ {
+        sub(/"[^"]+"/, "\"" new_playwright_driver_version "\"")
+        playwright_driver_version_updated = 1
+      }
+      !playwright_driver_hash_updated && $0 ~ /^[[:space:]]*playwrightDriverHash = "/ {
+        sub(/"[^"]+"/, "\"" new_playwright_driver_hash "\"")
+        playwright_driver_hash_updated = 1
+      }
       { print }
-    ' package.nix > "$tmp_file"
+      END {
+        if (!version_updated || !src_hash_updated || !pnpm_hash_updated || !cargo_hash_updated || !playwright_driver_version_updated || !playwright_driver_hash_updated) {
+          exit 1
+        }
+      }
+    ' package.nix > "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
 
   mv "$tmp_file" package.nix
 }
@@ -217,6 +399,17 @@ resolve_fixed_output_hash() {
   fi
 
   printf '%s\n' "$got_hash"
+}
+
+one_line_file() {
+  local file="$1"
+
+  if [ ! -s "$file" ]; then
+    return 0
+  fi
+
+  tr '\n' ' ' < "$file" \
+    | sed 's/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
 print_state() {
@@ -247,12 +440,14 @@ print_blocked_state() {
   local blocked_version="$3"
   local blocked_patches="$4"
   local refresh_command="$5"
+  local blocked_details="${6:-}"
 
   echo "update_blocked=${update_blocked}"
   echo "blocked_reason=${blocked_reason}"
   echo "blocked_version=${blocked_version}"
   echo "blocked_patches=${blocked_patches}"
   echo "refresh_command=${refresh_command}"
+  echo "blocked_details=${blocked_details}"
 }
 
 main() {
@@ -297,6 +492,10 @@ main() {
   current_pnpm_hash=$(get_current_pnpm_hash)
   local current_cargo_hash
   current_cargo_hash=$(get_current_cargo_hash)
+  local current_playwright_driver_version
+  current_playwright_driver_version=$(get_current_playwright_driver_version)
+  local current_playwright_driver_hash
+  current_playwright_driver_hash=$(get_current_playwright_driver_hash)
 
   local release_json
   release_json=$(fetch_release_json "$target_version")
@@ -323,6 +522,9 @@ main() {
   local blocked_version=""
   local blocked_patches=""
   local refresh_command=""
+  local blocked_details=""
+  local latest_playwright_driver_version="$current_playwright_driver_version"
+  local latest_playwright_driver_hash="$current_playwright_driver_hash"
 
   if [ "$update_needed" = true ]; then
     local patch_check_output
@@ -332,11 +534,34 @@ main() {
       blocked_version="$latest_version"
       blocked_patches=$(printf '%s\n' "$patch_check_output" | paste -sd ',' -)
       refresh_command="./scripts/refresh-patches.sh --version ${latest_version}"
+      blocked_details="carried patches no longer apply"
       update_needed=false
       log_warn "Skipping update to ${latest_version} because carried patches no longer apply:"
       printf '%s\n' "$patch_check_output" | sed 's/^/  - /'
       log_warn "Refresh command: ${refresh_command}"
     }
+  fi
+
+  if [ "$update_needed" = true ]; then
+    local playwright_metadata playwright_error
+    playwright_error=$(mktemp)
+
+    if playwright_metadata=$(resolve_playwright_driver_metadata "$latest_version" 2>"$playwright_error"); then
+      latest_playwright_driver_version=$(printf '%s\n' "$playwright_metadata" | sed -n '1p')
+      latest_playwright_driver_hash=$(printf '%s\n' "$playwright_metadata" | sed -n '2p')
+    else
+      update_blocked=true
+      blocked_reason="playwright-driver"
+      blocked_version="$latest_version"
+      blocked_details=$(one_line_file "$playwright_error")
+      update_needed=false
+      log_warn "Skipping update to ${latest_version} because Playwright driver metadata could not be resolved."
+      if [ -n "$blocked_details" ]; then
+        log_warn "$blocked_details"
+      fi
+    fi
+
+    rm -f "$playwright_error"
   fi
 
   if [ "$check_only" = true ]; then
@@ -350,7 +575,7 @@ main() {
       "$current_cargo_hash" \
       "$current_cargo_hash" \
       "$update_needed"
-    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command"
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command" "$blocked_details"
     if [ "$update_needed" = true ] && [ "$update_blocked" != true ]; then
       exit 1
     fi
@@ -368,39 +593,123 @@ main() {
       "$current_cargo_hash" \
       "$current_cargo_hash" \
       false
-    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command"
+    print_blocked_state "$update_blocked" "$blocked_reason" "$blocked_version" "$blocked_patches" "$refresh_command" "$blocked_details"
     exit 0
   fi
 
   log_info "Updating Donut Browser to version ${latest_version}..."
 
-  local package_backup
-  package_backup=$(mktemp)
-  cp package.nix "$package_backup"
+  PACKAGE_BACKUP=$(mktemp)
+  cp package.nix "$PACKAGE_BACKUP"
+  RESTORE_PACKAGE_ON_EXIT=true
+  trap restore_package_backup_on_exit EXIT
 
-  update_package_file "$latest_version" "$latest_src_hash" "$FAKE_HASH" "$FAKE_HASH"
+  if ! update_package_file "$latest_version" "$latest_src_hash" "$FAKE_HASH" "$FAKE_HASH" "$latest_playwright_driver_version" "$latest_playwright_driver_hash"; then
+    restore_package_backup
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$current_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$current_cargo_hash" \
+      false
+    print_blocked_state true "source-layout" "$latest_version" "" "" "package.nix version/hash fields were not found"
+    exit 0
+  fi
 
   log_info "Resolving pnpm dependency hash..."
-  local latest_pnpm_hash
-  latest_pnpm_hash=$(resolve_fixed_output_hash .#pnpm-deps)
+  local latest_pnpm_hash pnpm_error
+  pnpm_error=$(mktemp)
+  if ! latest_pnpm_hash=$(resolve_fixed_output_hash .#pnpm-deps 2>"$pnpm_error"); then
+    blocked_details=$(one_line_file "$pnpm_error")
+    rm -f "$pnpm_error"
+    restore_package_backup
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$current_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$current_cargo_hash" \
+      false
+    print_blocked_state true "pnpm-hash" "$latest_version" "" "" "$blocked_details"
+    exit 0
+  fi
+  rm -f "$pnpm_error"
   if [ -z "$latest_pnpm_hash" ]; then
     latest_pnpm_hash=$(get_current_pnpm_hash)
   fi
-  update_package_file "$latest_version" "$latest_src_hash" "$latest_pnpm_hash" "$FAKE_HASH"
+  if ! update_package_file "$latest_version" "$latest_src_hash" "$latest_pnpm_hash" "$FAKE_HASH" "$latest_playwright_driver_version" "$latest_playwright_driver_hash"; then
+    restore_package_backup
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$latest_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$current_cargo_hash" \
+      false
+    print_blocked_state true "source-layout" "$latest_version" "" "" "package.nix version/hash fields were not found"
+    exit 0
+  fi
 
   log_info "Resolving cargo dependency hash..."
-  local latest_cargo_hash
-  latest_cargo_hash=$(resolve_fixed_output_hash .#cargo-deps)
+  local latest_cargo_hash cargo_error
+  cargo_error=$(mktemp)
+  if ! latest_cargo_hash=$(resolve_fixed_output_hash .#cargo-deps 2>"$cargo_error"); then
+    blocked_details=$(one_line_file "$cargo_error")
+    rm -f "$cargo_error"
+    restore_package_backup
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$latest_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$current_cargo_hash" \
+      false
+    print_blocked_state true "cargo-hash" "$latest_version" "" "" "$blocked_details"
+    exit 0
+  fi
+  rm -f "$cargo_error"
   if [ -z "$latest_cargo_hash" ]; then
     latest_cargo_hash=$(get_current_cargo_hash)
   fi
-  update_package_file "$latest_version" "$latest_src_hash" "$latest_pnpm_hash" "$latest_cargo_hash"
+  if ! update_package_file "$latest_version" "$latest_src_hash" "$latest_pnpm_hash" "$latest_cargo_hash" "$latest_playwright_driver_version" "$latest_playwright_driver_hash"; then
+    restore_package_backup
+    print_state \
+      "$current_version" \
+      "$latest_version" \
+      "$current_src_hash" \
+      "$latest_src_hash" \
+      "$current_pnpm_hash" \
+      "$latest_pnpm_hash" \
+      "$current_cargo_hash" \
+      "$latest_cargo_hash" \
+      false
+    print_blocked_state true "source-layout" "$latest_version" "" "" "package.nix version/hash fields were not found"
+    exit 0
+  fi
 
   log_info "Verifying full package build..."
-  if ! nix build .#donutbrowser --no-link; then
+  local build_output build_status
+  set +e
+  build_output=$(nix build .#donutbrowser --no-link 2>&1)
+  build_status=$?
+  set -e
+  if [ "$build_status" -ne 0 ]; then
+    printf '%s\n' "$build_output" >&2
     log_warn "Skipping update to ${latest_version} because the full package build failed."
-    cp "$package_backup" package.nix
-    rm -f "$package_backup"
+    restore_package_backup
 
     print_state \
       "$current_version" \
@@ -412,11 +721,13 @@ main() {
       "$current_cargo_hash" \
       "$latest_cargo_hash" \
       false
-    print_blocked_state true "build" "$latest_version" "" ""
+    print_blocked_state true "build" "$latest_version" "" "" "nix build .#donutbrowser --no-link failed"
     exit 0
   fi
 
-  rm -f "$package_backup"
+  rm -f "$PACKAGE_BACKUP"
+  PACKAGE_BACKUP=""
+  RESTORE_PACKAGE_ON_EXIT=false
 
   print_state \
     "$current_version" \
@@ -428,7 +739,7 @@ main() {
     "$current_cargo_hash" \
     "$latest_cargo_hash" \
     true
-  print_blocked_state false "" "" "" ""
+  print_blocked_state false "" "" "" "" ""
 }
 
 main "$@"

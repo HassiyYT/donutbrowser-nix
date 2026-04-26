@@ -72,6 +72,17 @@ let
   srcHash = "sha256-sbDitzTgj8O3DFpwTQx5bOc6Mx6xQZvePkRdyu7P8O8=";
   pnpmDepsHash = "sha256-NdLzvXIb2eU/SGL/mexRRVXWZ1mTlO/qvS1ccjeagXs=";
   cargoDepsHash = "sha256-JnI4zOWRcSrRtQPN6o+PhpyjBKzYEAQb2h7RbmGX3Ss=";
+  playwrightDriverVersion = "1.57.0";
+  playwrightDriverHash = "sha256-Z/l4EEYEIpKZsIyK5BufxJsgtdbX3WDCNIoj8qvJlJ8=";
+  playwrightDriverReleaseSegment =
+    if
+      lib.hasInfix "next" playwrightDriverVersion
+      || lib.hasInfix "alpha" playwrightDriverVersion
+      || lib.hasInfix "beta" playwrightDriverVersion
+    then
+      "/next"
+    else
+      "";
 
   src = fetchFromGitHub {
     owner = "zhom";
@@ -81,8 +92,8 @@ let
   };
 
   playwrightDriverZip = fetchurl {
-    url = "https://playwright.azureedge.net/builds/driver/playwright-1.57.0-linux.zip";
-    hash = "sha256-Z/l4EEYEIpKZsIyK5BufxJsgtdbX3WDCNIoj8qvJlJ8=";
+    url = "https://playwright.azureedge.net/builds/driver${playwrightDriverReleaseSegment}/playwright-${playwrightDriverVersion}-linux.zip";
+    hash = playwrightDriverHash;
   };
 
   pnpmDeps = fetchPnpmDeps {
@@ -102,14 +113,28 @@ let
     cp -a ${rawCargoDeps} "$out"
     chmod -R u+w "$out"
 
-    cat > "$out/source-git-0/playwright-0.0.23/src/build.rs" <<'EOF'
+    playwright_vendor_dir="$(
+      find "$out" -path '*/playwright-*/src/build.rs' -print -quit
+    )"
+    if [ -z "$playwright_vendor_dir" ]; then
+      echo "Could not find vendored playwright-rust build.rs under cargo deps" >&2
+      exit 1
+    fi
+    playwright_vendor_dir="$(dirname "$playwright_vendor_dir")"
+
+    if [ ! -d "$playwright_vendor_dir/imp/core" ]; then
+      echo "Unexpected playwright-rust layout: missing src/imp/core" >&2
+      exit 1
+    fi
+
+    cat > "$playwright_vendor_dir/build.rs" <<'EOF'
 use std::{
     env, fmt, fs,
     fs::File,
     path::{Path, PathBuf, MAIN_SEPARATOR},
 };
 
-const DRIVER_VERSION: &str = "1.57.0";
+const DRIVER_VERSION: &str = "${playwrightDriverVersion}";
 
 fn main() {
     let out_dir: PathBuf = env::var_os("OUT_DIR").unwrap().into();
@@ -235,7 +260,7 @@ impl Default for PlaywrightPlatform {
 }
 EOF
 
-    cat > "$out/source-git-0/playwright-0.0.23/src/imp/core/driver.rs" <<'EOF'
+    cat > "$playwright_vendor_dir/imp/core/driver.rs" <<'EOF'
 use crate::imp::prelude::*;
 use std::{env, fs, io};
 use zip::{result::ZipError, ZipArchive};
