@@ -495,6 +495,7 @@ stdenv.mkDerivation {
 
     target="$(rustc -vV | sed -n 's/^host: //p')"
     export PLAYWRIGHT_DRIVER_ZIP="${playwrightDriverZip}"
+    export STABLE_RELEASE=1
 
     mkdir -p dist
     if [ ! -f dist/index.html ]; then
