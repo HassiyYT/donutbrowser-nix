@@ -117,6 +117,20 @@ jobs:
             ./scripts/update-version.sh
           fi
 
+      - name: Setup Cachix
+        if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
+        uses: cachix/cachix-action@v17
+        with:
+          name: hassiyyt
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build and push updated package to Cachix
+        if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
+        run: |
+          set -euo pipefail
+          out_paths="$(nix build .#donutbrowser --json --print-build-logs | jq -r '.[].outputs.out')"
+          printf '%s\n' "$out_paths" | cachix push hassiyyt
+
       - name: Commit and push update
         if: steps.check.outputs.update_needed == 'true' && steps.check.outputs.update_blocked != 'true'
         run: |
