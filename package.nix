@@ -68,10 +68,10 @@
 
 let
   pname = "donutbrowser";
-  version = "0.22.5";
-  srcHash = "sha256-ozGWbB5DwdYSWA1t1UsZbX3v/RQiD4WUbTkTBrq26S4=";
-  pnpmDepsHash = "sha256-ESBn20u1j6ber0T2IyTTmPvZ7AHhnI8LrnmyRRFEPG4=";
-  cargoDepsHash = "sha256-qY5ApuU1Ne06YxJMs17/JeEPta5GNjizRT6phk/BnS8=";
+  version = "0.22.6";
+  srcHash = "sha256-JtMbeCE+mgRJAMumRUs/AWL0yffhB+xnTc4KJdW21Uw=";
+  pnpmDepsHash = "sha256-WSajMu9g9hCM5MPoLfdQtN1rLS+NkQw5/ppBvZacDJw=";
+  cargoDepsHash = "sha256-p8A/pmFsQz5+CbAiYN+EsYh8FUXs2FSiOm8R2viISJg=";
   playwrightDriverVersion = "1.57.0";
   playwrightDriverHash = "sha256-Z/l4EEYEIpKZsIyK5BufxJsgtdbX3WDCNIoj8qvJlJ8=";
   playwrightDriverReleaseSegment =
