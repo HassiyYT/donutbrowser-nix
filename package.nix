@@ -68,10 +68,10 @@
 
 let
   pname = "donutbrowser";
-  version = "0.29.6";
-  srcHash = "sha256-xAgtXp4VhoNCm5vAjNT/n9KwgfoXH+ZxVvhRvRh8gKU=";
-  pnpmDepsHash = "sha256-LAoNiVGTtYEEOCcdRH0av/bg1QPw0/plyF84JlN6XPk=";
-  cargoDepsHash = "sha256-Kii+00mE8ha6UxcDnSlc1N6drDDWtIYnVmfN6/T7quk=";
+  version = "0.30.0";
+  srcHash = "sha256-6JBFmbg3Y3QzGxONDhYveBehFK/L6BV5b8leUStPJ/M=";
+  pnpmDepsHash = "sha256-CHovE6YnVON0XCDCwFRRh1NwG+w2CZsyKSYShL2wPXs=";
+  cargoDepsHash = "sha256-y+JTuBeLKnW0eUfVClVSP3ugNuY7c/vFmAVNyuSsikA=";
 
   src = fetchFromGitHub {
     owner = "zhom";
@@ -159,7 +159,6 @@ stdenv.mkDerivation {
   cargoRoot = "src-tauri";
 
   patches = [
-    ./patches/default-browser-feedback.patch
     ./patches/linux-runtime-prep.patch
     ./patches/nix-store-app-updates.patch
     ./patches/no-network-fonts.patch
