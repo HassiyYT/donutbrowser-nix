@@ -20,10 +20,10 @@ index 3655fb7f2ca88456a97eceaffc3539cbeeb3793c..5440b80d113529e7880d6e3b96266fea
      let pending_updates = match self.auto_updater.get_pending_update_versions() {
        Ok(updates) => updates,
 diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
-index 5b96082df87e2c953f0619795af797d33c9f68fb..1f90cc31f52ec8318baa358335a9aca6e1a736e9 100644
+index fe1a45e8909176aa259a1bbf46f490c150c68219..8086910f48644e53c0cc028f350817cfb6cb50e0 100644
 --- a/src-tauri/src/lib.rs
 +++ b/src-tauri/src/lib.rs
-@@ -2220,6 +2220,10 @@ pub fn run_with_builder(
+@@ -2338,6 +2338,10 @@ pub fn run_with_builder(
          // Start periodic cleanup task for unused binaries.
          tauri::async_runtime::spawn(async move {
            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(43200));

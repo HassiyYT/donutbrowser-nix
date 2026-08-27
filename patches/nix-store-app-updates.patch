@@ -1,5 +1,5 @@
 diff --git a/src-tauri/src/app_auto_updater.rs b/src-tauri/src/app_auto_updater.rs
-index 9cc77bd4eeec7102a0257a76dd7fb9bf7676a3f1..2959d3d362ef617145591c1fdea978d8b962a5a5 100644
+index 059475832cf288f439fee536f6f01141f1c40488..6c4f1f2a7f25f66a8bc701d559c428dc2c593b3e 100644
 --- a/src-tauri/src/app_auto_updater.rs
 +++ b/src-tauri/src/app_auto_updater.rs
 @@ -520,9 +520,24 @@ impl AppAutoUpdater {

@@ -1,5 +1,5 @@
 diff --git a/src-tauri/build.rs b/src-tauri/build.rs
-index 6f7e689b115a2a9c062f355c0ed378f6f04e8974..30dcf47203e2c3891069c68302b5607a53f294be 100644
+index 3cc8c117b515021c64cbc4dab73567dbf7d5d290..1c2da32894fac3d9503b8335b30562f5ab9ccbbc 100644
 --- a/src-tauri/build.rs
 +++ b/src-tauri/build.rs
 @@ -2,13 +2,18 @@ fn main() {
